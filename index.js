@@ -19,7 +19,7 @@ const Arm64ConfigDefaults = {
   baseDir: ".",
   binDir: ".bin",
   cgo: 0,
-  cmd: 'GOOS=linux GOARCH=arm go build -ldflags="-s -w"',
+  cmd: 'GOOS=linux GOARCH=arm64 go build -ldflags="-s -w"',
   monorepo: false,
 };
 
@@ -161,6 +161,9 @@ module.exports = class Plugin {
       packageConfig.include = packageConfig.include.concat(
         this.serverless.service.functions[name].package.include
       );
+    }
+    if (config.isArm64) {
+      packageConfig.include.push(path.join(__dirname, "bootstrap"))
     }
     this.serverless.service.functions[name].package = packageConfig;
   }
