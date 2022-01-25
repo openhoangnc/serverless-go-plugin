@@ -6,7 +6,7 @@
 
 `serverless-golang` is a Serverless Framework plugin that compiles Go functions on the fly. You don't need to do it manually before `serverless deploy`. Once the plugin is installed it will happen automatically. _The plugin works with Serverless Framework version 1.52 and above._
 
-### [dev.to: A better way of deploying Go services with Serverless Framework](https://dev.to/openhoangnc/a-better-way-of-deploying-go-services-with-serverless-framework-41c4)
+### [dev.to: A better way of deploying Go services with Serverless Framework](https://dev.to/mthenw/a-better-way-of-deploying-go-services-with-serverless-framework-41c4)
 
 ![output](https://user-images.githubusercontent.com/455261/73918022-fb952e00-48c0-11ea-9120-a7f34ad1ae55.gif)
 
