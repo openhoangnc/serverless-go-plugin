@@ -4,27 +4,23 @@ const merge = require("lodash.merge");
 const pMap = require("p-map");
 const os = require("os");
 const prettyHrtime = require("pretty-hrtime");
-const chalk = require("chalk");
 const path = require("path");
 
-const ConfigDefaults = {
-  baseDir: ".",
-  binDir: ".bin",
-  cgo: 0,
-  cmd: 'GOOS=linux GOARCH=amd64 go build -ldflags="-s -w"',
-  monorepo: false,
-};
-
-const Arm64ConfigDefaults = {
-  baseDir: ".",
-  binDir: ".bin",
-  cgo: 0,
-  cmd: 'GOOS=linux GOARCH=arm64 go build -ldflags="-s -w"',
-  monorepo: false,
-};
+const CmdBuildAmd64 = 'GOOS=linux GOARCH=amd64 go build -ldflags="-s -w"';
+const CmdBuildArm64 = 'GOOS=linux GOARCH=arm64 go build -ldflags="-s -w"';
 
 const GoRuntime = "go1.x";
-const Arm64Runtime = "provided.al2";
+const LinuxRuntime = "provided.al2";
+const GoRuntimePrefix = "go";
+
+const DefaultConfig = {
+  baseDir: ".",
+  binDir: ".bin",
+  cgo: 0,
+  cmd: CmdBuildAmd64,
+  monorepo: false,
+  runtime: GoRuntime,
+};
 
 module.exports = class Plugin {
   constructor(serverless, options) {
@@ -42,7 +38,7 @@ module.exports = class Plugin {
       "before:invoke:local:invoke": this.compileFunctionAndIgnorePackage.bind(
         this
       ),
-      "go:build:build": this.compileFunctions.bind(this),
+      "go:build:build": this.goBuild.bind(this),
     };
 
     this.commands = {
@@ -51,15 +47,25 @@ module.exports = class Plugin {
         lifecycleEvents: ["go"],
         commands: {
           build: {
-            usage: "Build all Go functions",
+            usage: "Build Go functions",
             lifecycleEvents: ["build"],
+            options: {
+              // Define the '--function' option with the '-f' shortcut
+              function: {
+                usage:
+                  'Specify the function you want to build (e.g. "--function myFunction")',
+                shortcut: "f",
+                required: false,
+                type: "string",
+              },
+            },
           },
         },
       },
     };
   }
 
-  async compileFunction () {
+  async compileFunction() {
     const name = this.options.function;
     const func = this.serverless.service.functions[this.options.function];
 
@@ -67,14 +73,12 @@ module.exports = class Plugin {
     await this.compile(name, func);
     const timeEnd = process.hrtime(timeStart);
 
-    this.serverless.cli.consoleLog(
-      `Go Plugin: ${chalk.yellow(
-        `Compilation time (${name}): ${prettyHrtime(timeEnd)}`
-      )}`
+    this.serverless.cli.log(
+      `Go Plugin: Compilation time (${name}): ${prettyHrtime(timeEnd)}`
     );
   }
 
-  async compileFunctions () {
+  async compileFunctions() {
     if (this.isInvoking) {
       return;
     }
@@ -85,30 +89,35 @@ module.exports = class Plugin {
     await pMap(
       names,
       async (name) => {
+        this.serverless.cli.log("Go Plugin: Compile " + name);
         const func = this.serverless.service.functions[name];
         await this.compile(name, func);
       },
-      { concurrency: os.cpus().length }
+      { concurrency: os.cpus().length > 1 ? os.cpus().length - 1 : 1 }
     );
     const timeEnd = process.hrtime(timeStart);
 
-    this.serverless.cli.consoleLog(
-      `Go Plugin: ${chalk.yellow("Compilation time: " + prettyHrtime(timeEnd))}`
+    this.serverless.cli.log(
+      "Go Plugin: Compilation time: " + prettyHrtime(timeEnd)
     );
   }
 
-  compileFunctionAndIgnorePackage () {
-    this.isInvoking = true;
-    return this.compileFunction();
+  async goBuild() {
+    if (this.options.function) {
+      await this.compileFunction();
+    } else {
+      await this.compileFunctions();
+    }
   }
 
-  async compile (name, func) {
-    const config = this.getConfig();
+  async compileFunctionAndIgnorePackage() {
+    this.isInvoking = true;
+    return await this.compileFunction();
+  }
 
-    const runtime = func.runtime || this.serverless.service.provider.runtime;
-    if (runtime !== GoRuntime && runtime !== Arm64Runtime) {
-      return;
-    }
+  async compile(name, func) {
+    const config = this.getConfig(func);
+    if (!config) return;
 
     const absHandler = path.resolve(config.baseDir);
     const absBin = path.resolve(config.binDir);
@@ -139,38 +148,78 @@ module.exports = class Plugin {
         ),
       });
     } catch (e) {
-      this.serverless.cli.consoleLog(
-        `Go Plugin: ${chalk.yellow(
-          `Error compiling "${name}" function (cwd: ${cwd}): ${e.message}`
-        )}`
+      this.serverless.cli.log(
+        `Go Plugin: Error compiling "${name}" function (cwd: ${cwd}): ${e.message}`
       );
       process.exit(1);
     }
 
     let binPath = path.join(config.binDir, name);
-    if (process.platform === "win32") {
-      binPath = binPath.replace(/\\/g, "/");
+
+    if (config.runtime == LinuxRuntime) {
+      const fs = require("fs");
+      const archiver = require("archiver");
+
+      const zipPath = binPath + ".zip";
+      const zipStream = fs.createWriteStream(zipPath);
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.pipe(zipStream);
+      archive.file(binPath, { name: "bootstrap" });
+      await archive.finalize();
+
+      this.serverless.service.functions[name].package = {
+        individually: true,
+        excludeDevDependencies: false,
+        artifact: zipPath,
+      };
+    } else {
+      if (process.platform === "win32") {
+        binPath = binPath.replace(/\\/g, "/");
+      }
+      const packageConfig = {
+        individually: true,
+        excludeDevDependencies: false,
+        patterns: ["!./**", binPath],
+      };
+      if (func.package) {
+        if (func.package.include) {
+          packageConfig.patterns = packageConfig.patterns.concat(
+            func.package.include
+          );
+        }
+        if (func.package.patterns) {
+          packageConfig.patterns = packageConfig.patterns.concat(
+            func.package.patterns
+          );
+        }
+      }
+      this.serverless.service.functions[name].handler = binPath;
+      this.serverless.service.functions[name].package = packageConfig;
     }
-    this.serverless.service.functions[name].handler = binPath;
-    const packageConfig = {
-      individually: true,
-      exclude: [`./**`],
-      include: [binPath],
-    };
-    if (this.serverless.service.functions[name].package) {
-      packageConfig.include = packageConfig.include.concat(
-        this.serverless.service.functions[name].package.include
-      );
-    }
-    if (config.isArm64) {
-      packageConfig.include.push(path.join(__dirname, "bootstrap"))
-    }
-    this.serverless.service.functions[name].package = packageConfig;
   }
 
-  getConfig () {
-    let isArm64 = this.serverless.service.provider?.architecture === 'arm64'
-    let config = isArm64 ? Arm64ConfigDefaults : ConfigDefaults;
+  getConfig(func) {
+    if (!func) func = {};
+    const provider = this.serverless.service.provider || {};
+
+    let config = DefaultConfig;
+
+    const runtime = func.runtime || provider.runtime;
+    if (
+      runtime !== GoRuntime &&
+      runtime !== LinuxRuntime &&
+      !runtime.startsWith(GoRuntimePrefix)
+    ) {
+      return;
+    }
+
+    config.runtime = runtime;
+
+    const architecture = func.architecture || provider.architecture;
+    if (architecture == "arm64") {
+      config.cmd = CmdBuildArm64;
+    }
+
     if (this.serverless.service.custom && this.serverless.service.custom.go) {
       config = merge(config, this.serverless.service.custom.go);
     }
@@ -179,7 +228,7 @@ module.exports = class Plugin {
 };
 
 const envSetterRegex = /^(\w+)=('(.*)'|"(.*)"|(.*))/;
-function parseCommand (cmd) {
+function parseCommand(cmd) {
   const args = cmd.split(" ");
   const envSetters = {};
   let command = "";
