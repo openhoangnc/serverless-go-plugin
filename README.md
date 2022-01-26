@@ -15,7 +15,8 @@
 - Concurrent compilation happens across all CPU cores.
 - Support for both `serverless deploy` and `serverless deploy function` commands.
 - Support for `serverless invoke local` command.
-- Additional command `serverless go build`.
+- Additional command `serverless go build`, support build only 1 function with parameter --f <function name>.
+- Support ARM64 architecture with Amazon Linux 2 (`provided.al2`) runtime
 
 ## Install
 
@@ -37,7 +38,8 @@
    ```
    functions:
      example:
-       runtime: go1.x
+       runtime: go1.x # or provided.al2
+       architecture: x86_64 # or arm64
        handler: functions/example/main.go # or just functions/example
    ```
 
@@ -57,14 +59,23 @@ custom:
 
 ## How does it work?
 
-The plugin compiles every Go function defined in `serverless.yaml` into `.bin` directory. After that it internally changes `handler` so that the Serverless Framework will deploy the compiled file not the source file. The plugin compiles a function only if `runtime` (either on function or provider level) is set to Go (`go1.x`).
+The plugin compiles every Go function defined in `serverless.yaml` into `.bin` directory. After that it internally changes `handler` so that the Serverless Framework will deploy the compiled file not the source file. The plugin compiles a function only if `runtime` (either on function or provider level) is set to Go (`go1.x`) or Amazon Linux 2 (`provided.al2`)
 
 For every matched function it also overrides `package` parameter to
 
+- For Go (`go1.x`) runtime
 ```
 individually: true
-exclude:
-  - `./**`
-include:
-  - `<path to the compiled file and any files that you defined to be included>`
+excludeDevDependencies: false
+patterns: 
+   - "!./**"
+   - `<path to the compiled file and any files that you defined to be included>`
+```
+
+
+- For Amazon Linux 2 (`provided.al2`) runtime
+```
+individually: true
+excludeDevDependencies: false
+artifact: `<path to the compiled & zipped file>`
 ```
