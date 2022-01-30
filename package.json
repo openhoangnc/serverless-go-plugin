@@ -1,6 +1,6 @@
 {
   "name": "serverless-golang",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Serverless Framework plugin that compiles Go functions on the fly",
   "keywords": [
     "serverless",
