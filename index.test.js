@@ -63,7 +63,7 @@ describe("Go Plugin", () => {
         `.bin/testFunc2`
       );
       expect(execStub).to.have.been.calledWith(
-        `go build -ldflags="-s -w" -o .bin/testFunc2 functions/func2/main.go`
+        `go build -ldflags="-s -w" -trimpath -o .bin/testFunc2 functions/func2/main.go`
       );
       expect(execStub.firstCall.args[1].cwd).to.equal(".");
       expect(execStub.firstCall.args[1].env.GOOS).to.equal("linux");
@@ -72,7 +72,7 @@ describe("Go Plugin", () => {
         `.bin/testFunc3`
       );
       expect(execStub).to.have.been.calledWith(
-        `go build -ldflags="-s -w" -o .bin/testFunc3 functions/func3`
+        `go build -ldflags="-s -w" -trimpath -o .bin/testFunc3 functions/func3`
       );
     });
 
@@ -138,7 +138,7 @@ describe("Go Plugin", () => {
 
       // then
       expect(execStub).to.have.been.calledOnceWith(
-        `go build -ldflags="-s -w" -o ../.bin/testFunc1 functions/func1/main.go`
+        `go build -ldflags="-s -w" -trimpath -o ../.bin/testFunc1 functions/func1/main.go`
       );
       expect(execStub.firstCall.args[1].cwd).to.equal("gopath");
     });
@@ -281,7 +281,7 @@ describe("Go Plugin", () => {
 
       // then
       expect(execStub).to.have.been.calledOnceWith(
-        `go build -ldflags="-s -w" -o .bin/testFunc1 functions/func1/main.go`
+        `go build -ldflags="-s -w" -trimpath -o .bin/testFunc1 functions/func1/main.go`
       );
       expect(execStub.firstCall.args[1].cwd).to.equal(".");
     });
@@ -322,14 +322,14 @@ describe("Go Plugin", () => {
         `.bin/testFunc1`
       );
       expect(execStub).to.have.been.calledWith(
-        `go build -ldflags="-s -w" -o ../../.bin/testFunc1 .`
+        `go build -ldflags="-s -w" -trimpath -o ../../.bin/testFunc1 .`
       );
       expect(execStub.firstCall.args[1].cwd).to.equal("functions/func1");
       expect(config.service.functions.testFunc2.handler).to.equal(
         `.bin/testFunc2`
       );
       expect(execStub).to.have.been.calledWith(
-        `go build -ldflags="-s -w" -o ../../.bin/testFunc2 main.go`
+        `go build -ldflags="-s -w" -trimpath -o ../../.bin/testFunc2 main.go`
       );
       expect(execStub.secondCall.args[1].cwd).to.equal("functions/func2");
     });
