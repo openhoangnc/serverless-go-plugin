@@ -2,6 +2,7 @@ const proxyquire = require("proxyquire");
 const merge = require("lodash.merge");
 const sinon = require("sinon");
 const chai = require("chai");
+const { assert } = require("chai");
 const expect = chai.expect;
 
 chai.use(require("sinon-chai"));
@@ -192,9 +193,9 @@ describe("Go Plugin", () => {
 
       // then
       expect(config.service.functions.testFunc1.package).to.deep.equal({
+        excludeDevDependencies: false,
         individually: true,
-        exclude: [`./**`],
-        include: [`.bin/testFunc1`],
+        patterns: ["!./**", ".bin/testFunc1"],
       });
     });
 
@@ -224,9 +225,9 @@ describe("Go Plugin", () => {
 
       // then
       expect(config.service.functions.testFunc1.package).to.deep.equal({
+        excludeDevDependencies: false,
         individually: true,
-        exclude: ["./**"],
-        include: [`.bin/testFunc1`, "somepath"],
+        patterns: ["!./**", `.bin/testFunc1`, "somepath"],
       });
     });
 
@@ -370,6 +371,6 @@ const serverlessStub = {
     functions: {},
   },
   cli: {
-    consoleLog() {},
+    log() {},
   },
 };
