@@ -1,13 +1,17 @@
+const archiver = require("archiver");
+const fs = require("fs");
+const merge = require("lodash.merge");
+const os = require("os");
+const path = require("path");
+const pMap = require("p-map");
+const prettyHrtime = require("pretty-hrtime");
+
 const util = require("util");
 const exec = util.promisify(require("child_process").exec);
-const merge = require("lodash.merge");
-const pMap = require("p-map");
-const os = require("os");
-const prettyHrtime = require("pretty-hrtime");
-const path = require("path");
 
-const CmdBuildAmd64 = 'GOOS=linux GOARCH=amd64 go build -ldflags="-s -w"';
-const CmdBuildArm64 = 'GOOS=linux GOARCH=arm64 go build -ldflags="-s -w"';
+const CmdBuild = 'GOOS=linux go build -ldflags="-s -w" -trimpath';
+const CmdBuildAmd64 = "GOARCH=amd64 " + CmdBuild;
+const CmdBuildArm64 = "GOARCH=arm64 " + CmdBuild;
 
 const GoRuntime = "go1.x";
 const LinuxRuntime = "provided.al2";
@@ -30,14 +34,12 @@ module.exports = class Plugin {
 
     this.hooks = {
       "before:deploy:function:packageFunction": this.compileFunction.bind(this),
-      "before:package:createDeploymentArtifacts": this.compileFunctions.bind(
-        this
-      ),
+      "before:package:createDeploymentArtifacts":
+        this.compileFunctions.bind(this),
       // Because of https://github.com/serverless/serverless/blob/master/lib/plugins/aws/invokeLocal/index.js#L361
       // plugin needs to compile a function and then ignore packaging.
-      "before:invoke:local:invoke": this.compileFunctionAndIgnorePackage.bind(
-        this
-      ),
+      "before:invoke:local:invoke":
+        this.compileFunctionAndIgnorePackage.bind(this),
       "go:build:build": this.goBuild.bind(this),
     };
 
@@ -93,7 +95,7 @@ module.exports = class Plugin {
         const func = this.serverless.service.functions[name];
         await this.compile(name, func);
       },
-      { concurrency: os.cpus().length > 1 ? os.cpus().length - 1 : 1 }
+      { concurrency: os.cpus().length }
     );
     const timeEnd = process.hrtime(timeStart);
 
@@ -157,15 +159,14 @@ module.exports = class Plugin {
     let binPath = path.join(config.binDir, name);
 
     if (config.runtime == LinuxRuntime) {
-      const fs = require("fs");
-      const archiver = require("archiver");
-
       const zipPath = binPath + ".zip";
-      const zipStream = fs.createWriteStream(zipPath);
-      const archive = archiver("zip", { zlib: { level: 9 } });
-      archive.pipe(zipStream);
-      archive.file(binPath, { name: "bootstrap" });
-      await archive.finalize();
+      await new Promise((resolve) => {
+        const outStream = fs.createWriteStream(zipPath);
+        outStream.on("close", resolve);
+        const archive = archiver("zip", { zlib: { level: 9 } });
+        archive.pipe(outStream);
+        archive.file(binPath, { name: "bootstrap" }).finalize();
+      });
 
       this.serverless.service.functions[name].package = {
         individually: true,
